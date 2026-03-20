@@ -14,6 +14,7 @@ from steampy.exceptions import ApiException, SevenDaysHoldException, TooManyRequ
 from steampy.login import InvalidCredentials, LoginExecutor
 from steampy.market import SteamMarket
 from steampy.models import Asset, GameOptions, SteamUrl, TradeOfferState
+from steampy.rot_proxy import RotatingProxySession
 from steampy.utils import (
     account_id_to_steam_id,
     get_description_key,
@@ -22,7 +23,6 @@ from steampy.utils import (
     merge_items_with_descriptions_from_inventory,
     merge_items_with_descriptions_from_offer,
     merge_items_with_descriptions_from_offers,
-    ping_proxy,
     steam_id_to_account_id,
     text_between,
     texts_between,
@@ -32,18 +32,23 @@ from steampy.utils import (
 class SteamClient:
     def __init__(
         self,
-        api_key: str,
+        login_cookies: dict,
+        api_key: str | None = None,
         username: str | None = None,
         password: str | None = None,
         steam_guard: str | None = None,
-        login_cookies: dict | None = None,
         proxies: dict | None = None,
+        account_name: str | None = None,
     ) -> None:
         self._api_key = api_key
-        self._session = requests.Session()
+        # self._session = requests.Session()
+        self._session = RotatingProxySession()
+        self._sessionid = login_cookies.get('sessionid')
+        self.account_name = account_name
 
         if proxies:
-            self.set_proxies(proxies)
+            print(f"[DEBUG] Setting up proxies for account {account_name or 'unknown'}...")
+            self._session.set_proxies_list(proxies, skip_ping=True)
 
         self.steam_guard_string = steam_guard
         if self.steam_guard_string is not None:
@@ -57,20 +62,7 @@ class SteamClient:
         self.market = SteamMarket(self._session)
         self._access_token = None
 
-        if login_cookies:
-            self.set_login_cookies(login_cookies)
-
-    def set_proxies(self, proxies: dict) -> dict:
-        if not isinstance(proxies, dict):
-            raise TypeError(
-                'Proxy must be a dict. Example: '
-                r'\{"http": "http://login:password@host:port"\, "https": "http://login:password@host:port"\}',
-            )
-
-        if ping_proxy(proxies):
-            self._session.proxies.update(proxies)
-
-        return proxies
+        self.set_login_cookies(login_cookies)
 
     def set_login_cookies(self, cookies: dict) -> None:
         self._session.cookies.update(cookies)
@@ -85,7 +77,8 @@ class SteamClient:
         response = self._session.get(url)
         if steam_id := re.search(r'g_steamID = "(\d+)";', response.text):
             return int(steam_id.group(1))
-        raise ValueError(f'Invalid steam_id: {steam_id}')
+        account_info = f" for account '{self.account_name}'" if self.account_name else ""
+        raise ValueError(f'Invalid steam_id{account_info}: {steam_id}')
 
     def login(self, username: str | None = None, password: str | None = None, steam_guard: str | None = None) -> None:
         invalid_client_credentials_is_present = None in {self.username, self._password, self.steam_guard_string}
@@ -171,21 +164,25 @@ class SteamClient:
     def get_partner_inventory(
         self, partner_steam_id: str, game: GameOptions, merge: bool = True, count: int = 5000,
     ) -> dict:
-        url = f'{SteamUrl.COMMUNITY_URL}/inventory/{partner_steam_id}/{game.app_id}/{game.context_id}'
-        params = {'l': 'english', 'count': count}
-
+        url = f'{SteamUrl.COMMUNITY_URL}/my/inventory/json/{game.app_id}/{game.context_id}'
+        # url = f'{SteamUrl.COMMUNITY_URL}/inventory/{partner_steam_id}/{game.app_id}/{game.context_id}'
+        params = {'l': 'english'}
+        
         full_response = self._session.get(url, params=params)
         response_dict = full_response.json()
+
         if full_response.status_code == 429:
             raise TooManyRequests('Too many requests, try again later.')
 
-        if response_dict is None or response_dict.get('success') != 1:
-            raise ApiException('Success value should be 1.')
+        if response_dict is None:
+            raise ApiException('Response is None.')
+        if response_dict.get('success') != 1:
+            raise ApiException(f"Success value should be 1. Actual value: {response_dict.get('success')}")
 
         return merge_items_with_descriptions_from_inventory(response_dict, game) if merge else response_dict
 
     def _get_session_id(self) -> str:
-        return self._session.cookies.get_dict(domain="steamcommunity.com", path="/").get('sessionid')
+        return self._sessionid
 
     def get_trade_offers_summary(self) -> dict:
         params = {'key': self._api_key}
