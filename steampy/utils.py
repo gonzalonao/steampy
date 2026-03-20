@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import os
+
 import copy
 import math
+# Using f-strings is simpler and supports flexible concatenation.
 import re
 import struct
 from decimal import Decimal
@@ -116,10 +119,13 @@ def calculate_net_price(price_gross: Decimal, publisher_fee: Decimal, steam_fee:
 
 
 def merge_items_with_descriptions_from_inventory(inventory_response: dict, game: GameOptions) -> dict:
-    inventory = inventory_response.get('assets', [])
+    # inventory = inventory_response.get('assets', [])
+    inventory = inventory_response.get('rgInventory', [])
     if not inventory:
+        print(f"[DEBUG] No inventory assets found in response for game {game.app_id}. Response: {inventory_response}")
         return {}
-    descriptions = {get_description_key(description): description for description in inventory_response['descriptions']}
+    # descriptions = {get_description_key(description): description for description in inventory_response['descriptions']}
+    descriptions = inventory_response['rgDescriptions']
     return merge_items(inventory, descriptions, context_id=game.context_id)
 
 
@@ -148,10 +154,18 @@ def merge_items_with_descriptions_from_listing(listings: dict, ids_to_assets_add
     return listings
 
 
+def merge_items_with_descriptions_from_history(history: dict, ids_to_assets_address: dict, descriptions: dict) -> dict:
+    for history_id, history_item in history.items():
+        asset_address = ids_to_assets_address[history_id]
+        description = descriptions[asset_address[0]][asset_address[1]][asset_address[2]]
+        history_item['description'] = description
+    return history
+
 def merge_items(items: list[dict], descriptions: dict, **kwargs) -> dict:
     merged_items = {}
 
-    for item in items:
+    for item in items.values():
+    # for item in items:
         description_key = get_description_key(item)
         description = copy.copy(descriptions[description_key])
         item_id = item.get('id') or item['assetid']
@@ -200,6 +214,31 @@ def get_sell_listings_from_node(node: Tag) -> dict:
 
     return sell_listings_dict
 
+def get_history_from_node(node: Tag) -> dict:
+    history_raw = node.findAll('div', {'id': re.compile(r'history_row_\d+')})
+    history_dict = {}
+    for history_item_raw in history_raw:
+        spans = history_item_raw.select('span.market_listing_price')
+        # Extract raw price, replace any '-' with '0'
+        raw_price = spans[0].text.strip().replace('-', '0')
+        # Remove any existing euro sign and surrounding whitespace
+        price_clean = raw_price.replace('€', '').replace(',', '.').strip()
+
+        spans = history_item_raw.select('span.market_listing_item_name')
+        display_name = spans[0].text.strip()
+
+        gainorloss_text = history_item_raw.findAll('div', {'class': 'market_listing_gainorloss'})[0].text.strip()
+
+        history_item = {
+            'sale_type': '1' if gainorloss_text == '+' else '0',
+            'history_id': history_item_raw.attrs['id'].replace('history_row_', ''),
+            'price': price_clean,
+            'display_name': display_name,
+            'date': history_item_raw.findAll('div', {'class': 'market_listing_listed_date'})[0].text.strip(),
+        }
+        history_dict[history_item['history_id']] = history_item
+    return history_dict
+
 
 def get_market_sell_listings_from_api(html: str) -> dict:
     document = BeautifulSoup(html, 'html.parser')
@@ -207,19 +246,26 @@ def get_market_sell_listings_from_api(html: str) -> dict:
     return {'sell_listings': sell_listings_dict}
 
 
+def get_history_from_api(html: str) -> dict:
+    document = BeautifulSoup(html, 'html.parser')
+    history_dict = get_history_from_node(document)
+    return history_dict
+
+
 def get_buy_orders_from_node(node: Tag) -> dict:
     buy_orders_raw = node.findAll('div', {'id': re.compile('mybuyorder_\\d+')})
     buy_orders_dict = {}
+    game_name_map = {'Rust': 252490, 'Counter-Strike 2': 730}
 
     for order in buy_orders_raw:
         qnt_price_raw = order.select('span[class=market_listing_price]')[0].text.split('@')
+        game_name = order.select('span[class=market_listing_game_name]')[0].text
         order = {
             'order_id': order.attrs['id'].replace('mybuyorder_', ''),
             'quantity': int(qnt_price_raw[0].strip()),
-            'price': qnt_price_raw[1].strip(),
+            'price': qnt_price_raw[1].strip().replace('-', '0').replace('€', '').replace(',', '.').strip(),
             'item_name': order.a.text,
-            'icon_url': order.select('img[class=market_listing_item_img]')[0].attrs['src'].rsplit('/', 2)[-2],
-            'game_name': order.select('span[class=market_listing_game_name]')[0].text,
+            'appid': game_name_map.get(game_name),
         }
         buy_orders_dict[order['order_id']] = order
 
@@ -232,6 +278,18 @@ def get_listing_id_to_assets_address_from_html(html: str) -> dict:
 
     for match in re.findall(regex, html):
         listing_id_to_assets_address[match[0]] = [str(match[1]), match[2], match[3]]
+
+    return listing_id_to_assets_address
+
+def get_history_id_to_assets_address_from_html(html: str) -> dict:
+    listing_id_to_assets_address = {}
+    regex = r"CreateItemHoverFromContainer\( [\w]+, 'history_row_([\d]+)_([\d]+)_[\w]+', ([\d]+), '([\d]+)', '([\d]+)', [\d]+ \);"
+
+    for match in re.findall(regex, html):
+        # match is a tuple like (history_id_part1, history_id_part2, asset_a, asset_b, asset_c)
+        # build a combined key like "<part1>_<part2>"
+        key = f"{match[0]}_{match[1]}"
+        listing_id_to_assets_address[key] = [str(match[2]), match[3], match[4]]
 
     return listing_id_to_assets_address
 
@@ -258,13 +316,13 @@ class Credentials:
         self.api_key = api_key
 
 
-def ping_proxy(proxies: dict) -> bool:
-    try:
-        requests.get('https://steamcommunity.com/', proxies=proxies)
-        return True
-    except Exception:
-        raise ProxyConnectionError('Proxy not working for steamcommunity.com')
-
-
 def create_cookie(name: str, cookie: str, domain: str) -> dict:
     return {'name': name, 'value': cookie, 'domain': domain}
+
+
+def ping_proxy(proxies: dict) -> bool:
+    try:
+        requests.get('https://steamcommunity.com/', proxies=proxies, timeout=10)
+        return True
+    except Exception:
+        return False
