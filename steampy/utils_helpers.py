@@ -4,7 +4,6 @@ from pathlib import Path
 
 from steampy.client import SteamClient
 from steampy.async_client import AsyncClient
-from steampy.exceptions import ProxyConnectionError
 from steampy.utils import ping_proxy
 
 

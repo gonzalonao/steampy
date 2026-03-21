@@ -158,10 +158,6 @@ class AsyncMarket:
         response = await self.async_session.post(f'{SteamUrl.COMMUNITY_URL}/market/createbuyorder/', data=data, headers=headers, proxy = proxy_url)
         return response
 
-        # response.raise_for_status()  # Raise an exception for HTTP errors
-
-        return response
-
     @login_required
     def buy_item(
         self,

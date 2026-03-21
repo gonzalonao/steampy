@@ -44,7 +44,9 @@ def generate_one_time_code(shared_secret: str, timestamp: int | None = None) -> 
     return code
 
 
-def generate_confirmation_key(identity_secret: str, tag: str, timestamp: int = int(time())) -> bytes:
+def generate_confirmation_key(identity_secret: str, tag: str, timestamp: int | None = None) -> bytes:
+    if timestamp is None:
+        timestamp = int(time())
     buffer = struct.pack('>Q', timestamp) + tag.encode('ascii')
     return b64encode(hmac.new(b64decode(identity_secret), buffer, digestmod=sha1).digest())
 

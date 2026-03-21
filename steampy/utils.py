@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import os
-
 import copy
 import math
 # Using f-strings is simpler and supports flexible concatenation.
@@ -16,7 +14,7 @@ import requests
 from bs4 import BeautifulSoup, Tag
 from requests.structures import CaseInsensitiveDict
 
-from steampy.exceptions import LoginRequired, ProxyConnectionError
+from steampy.exceptions import LoginRequired
 
 if TYPE_CHECKING:
     from steampy.models import GameOptions
@@ -119,12 +117,9 @@ def calculate_net_price(price_gross: Decimal, publisher_fee: Decimal, steam_fee:
 
 
 def merge_items_with_descriptions_from_inventory(inventory_response: dict, game: GameOptions) -> dict:
-    # inventory = inventory_response.get('assets', [])
     inventory = inventory_response.get('rgInventory', [])
     if not inventory:
-        print(f"[DEBUG] No inventory assets found in response for game {game.app_id}. Response: {inventory_response}")
         return {}
-    # descriptions = {get_description_key(description): description for description in inventory_response['descriptions']}
     descriptions = inventory_response['rgDescriptions']
     return merge_items(inventory, descriptions, context_id=game.context_id)
 
@@ -161,11 +156,10 @@ def merge_items_with_descriptions_from_history(history: dict, ids_to_assets_addr
         history_item['description'] = description
     return history
 
-def merge_items(items: list[dict], descriptions: dict, **kwargs) -> dict:
+def merge_items(items: dict, descriptions: dict, **kwargs) -> dict:
     merged_items = {}
 
     for item in items.values():
-    # for item in items:
         description_key = get_description_key(item)
         description = copy.copy(descriptions[description_key])
         item_id = item.get('id') or item['assetid']

@@ -41,7 +41,6 @@ class SteamClient:
         account_name: str | None = None,
     ) -> None:
         self._api_key = api_key
-        # self._session = requests.Session()
         self._session = RotatingProxySession()
         self._sessionid = login_cookies.get('sessionid')
         self.account_name = account_name
@@ -169,11 +168,11 @@ class SteamClient:
         params = {'l': 'english'}
         
         full_response = self._session.get(url, params=params)
-        response_dict = full_response.json()
 
         if full_response.status_code == 429:
             raise TooManyRequests('Too many requests, try again later.')
 
+        response_dict = full_response.json()
         if response_dict is None:
             raise ApiException('Response is None.')
         if response_dict.get('success') != 1:
