@@ -127,10 +127,10 @@ def get_results_path() -> Path:
     """Return the directory where all script outputs should be stored.
 
     Reads from the RESULTS_PATH environment variable. Defaults to a
-    ``results/`` folder next to this package (i.e. the project root).
+    ``results/`` folder in the current working directory.
     Creates the directory if it does not exist.
     """
-    default = Path(__file__).resolve().parent.parent / "results"
+    default = Path.cwd() / "results"
     results = Path(os.environ.get("RESULTS_PATH", str(default)))
     results.mkdir(parents=True, exist_ok=True)
     return results
