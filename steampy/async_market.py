@@ -141,6 +141,7 @@ class AsyncMarket:
         game: GameOptions,
         currency: Currency = Currency.EURO,
         proxy: dict = None,
+        confirmation: int = 0,
     ) -> dict:
         data = {
             'sessionid': self._session_id,
@@ -150,6 +151,8 @@ class AsyncMarket:
             'price_total': str(Decimal(price_single_item) * Decimal(quantity)),
             'quantity': quantity,
         }
+        if confirmation:
+            data['confirmation'] = confirmation
         headers = {
             'Referer': f'{SteamUrl.COMMUNITY_URL}/market/listings/{game.app_id}/{urllib.parse.quote(market_name)}',
         }
