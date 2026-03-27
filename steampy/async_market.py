@@ -141,7 +141,7 @@ class AsyncMarket:
         game: GameOptions,
         currency: Currency = Currency.EURO,
         proxy: dict = None,
-        confirmation: int = 0,
+        confirmation: str = "0",
     ) -> dict:
         data = {
             'sessionid': self._session_id,
