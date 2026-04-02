@@ -76,7 +76,11 @@ class SteamMarket:
         response = self._session.rotating_post(f'{SteamUrl.COMMUNITY_URL}/market/sellitem/', data, headers=headers).json()
         has_pending_confirmation = 'pending confirmation' in response.get('message', '')
         if response.get('needs_mobile_confirmation') or (not response.get('success') and has_pending_confirmation):
-            return self._confirm_sell_listing(assetid)
+            if 'identity_secret' in self._steam_guard:
+                return self._confirm_sell_listing(assetid)
+            # No identity_secret available (cookie-auth) — return as-is;
+            # the listing is created but needs manual confirmation in the Steam app.
+            return response
 
         return response
 
