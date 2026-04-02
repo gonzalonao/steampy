@@ -83,3 +83,40 @@ class RotatingProxySession(requests.Session):
         raise ProxyError(
             f'All {retries_allowed + 1} proxy attempts failed for {url}. Last error: {last_exc}'
         ) from last_exc
+
+    def rotating_post(self, url: str, data=None, max_proxy_retries: int = None, **kwargs) -> requests.Response:
+        """
+        Send a POST using the next proxy from the list (if any).
+        Falls back to normal POST when no proxy list is configured.
+
+        On a ProxyError, automatically retries with the next proxy in the list.
+        The number of retries is capped at the total number of available proxies
+        (or max_proxy_retries if provided) to avoid infinite loops.
+        """
+        if not self._proxies_list:
+            print('[DEBUG] No proxies configured, using direct connection')
+            return super().post(url, data=data, **kwargs)
+
+        retries_allowed = max_proxy_retries if max_proxy_retries is not None else len(self._proxies_list)
+
+        last_exc = None
+        for attempt in range(retries_allowed + 1):  # +1 for the initial attempt
+            proxy = self._pick_next_proxy()
+            attempt_kwargs = dict(kwargs)
+            if attempt == 0:
+                attempt_kwargs.setdefault('proxies', proxy)
+            else:
+                attempt_kwargs['proxies'] = proxy  # force the new proxy on retries
+
+            try:
+                return super().post(url, data=data, **attempt_kwargs)
+            except ProxyError as e:
+                last_exc = e
+                print(
+                    f'[DEBUG] ProxyError on POST attempt {attempt + 1}/{retries_allowed + 1} '
+                    f'(proxy: {proxy}). Retrying with next proxy...'
+                )
+
+        raise ProxyError(
+            f'All {retries_allowed + 1} proxy POST attempts failed for {url}. Last error: {last_exc}'
+        ) from last_exc
