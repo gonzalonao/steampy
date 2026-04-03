@@ -62,13 +62,13 @@ class SteamMarket:
         return response.json()
 
     @login_required
-    def create_sell_order(self, assetid: str, game: GameOptions, money_to_receive: str) -> dict:
+    def create_sell_order(self, assetid: str, game: GameOptions, money_to_receive: str, amount: int = 1) -> dict:
         data = {
             'assetid': assetid,
             'sessionid': self._session_id,
             'contextid': game.context_id,
             'appid': game.app_id,
-            'amount': 1,
+            'amount': amount,
             'price': money_to_receive,
         }
         headers = {'Referer': f'{SteamUrl.COMMUNITY_URL}/profiles/{self._steam_guard["steamid"]}/inventory'}
