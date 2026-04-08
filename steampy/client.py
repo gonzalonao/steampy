@@ -164,21 +164,33 @@ class SteamClient:
         self, partner_steam_id: str, game: GameOptions, merge: bool = True, count: int = 5000,
     ) -> dict:
         url = f'{SteamUrl.COMMUNITY_URL}/my/inventory/json/{game.app_id}/{game.context_id}'
-        # url = f'{SteamUrl.COMMUNITY_URL}/inventory/{partner_steam_id}/{game.app_id}/{game.context_id}'
-        params = {'l': 'english'}
-        
-        full_response = self._session.get(url, params=params)
+        params: dict = {'l': 'english'}
 
-        if full_response.status_code == 429:
-            raise TooManyRequests('Too many requests, try again later.')
+        all_inventory: dict = {}
+        all_descriptions: dict = {}
 
-        response_dict = full_response.json()
-        if response_dict is None:
-            raise ApiException('Response is None.')
-        if response_dict.get('success') != 1:
-            raise ApiException(f"Success value should be 1. Actual value: {response_dict.get('success')}")
+        while True:
+            full_response = self._session.rotating_get(url, params=params)
 
-        return merge_items_with_descriptions_from_inventory(response_dict, game) if merge else response_dict
+            if full_response.status_code == 429:
+                raise TooManyRequests('Too many requests, try again later.')
+
+            response_dict = full_response.json()
+            if response_dict is None:
+                raise ApiException('Response is None.')
+            if response_dict.get('success') != 1:
+                raise ApiException(f"Success value should be 1. Actual value: {response_dict.get('success')}")
+
+            all_inventory.update(response_dict.get('rgInventory', {}))
+            all_descriptions.update(response_dict.get('rgDescriptions', {}))
+
+            if not response_dict.get('more', False):
+                break
+            params['start'] = response_dict['more_start']
+            time.sleep(1)  # avoid rate limiting between pages
+
+        combined = {'success': 1, 'rgInventory': all_inventory, 'rgDescriptions': all_descriptions}
+        return merge_items_with_descriptions_from_inventory(combined, game) if merge else combined
 
     def _get_session_id(self) -> str:
         return self._sessionid
