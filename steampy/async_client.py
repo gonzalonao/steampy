@@ -22,7 +22,6 @@ from steampy.utils import (
     get_description_key,
     get_key_value_from_url,
     login_required,
-    merge_items,
     merge_items_with_descriptions_from_inventory,
     merge_items_with_descriptions_from_offer,
     merge_items_with_descriptions_from_offers,
@@ -198,44 +197,17 @@ class AsyncClient:
         self, partner_steam_id: str, game: GameOptions, merge: bool = True, count: int = 5000,
     ) -> dict:
         url = f'{SteamUrl.COMMUNITY_URL}/inventory/{partner_steam_id}/{game.app_id}/{game.context_id}'
-        params: dict = {'l': 'english', 'count': 2000}
+        params = {'l': 'english', 'count': count}
 
-        all_assets: dict = {}        # assetid -> asset dict
-        all_descriptions: dict = {}  # classid_instanceid -> description dict
+        full_response = self._session.get(url, params=params)
+        response_dict = full_response.json()
+        if full_response.status_code == 429:
+            raise TooManyRequests('Too many requests, try again later.')
 
-        while True:
-            full_response = self._session.rotating_get(url, params=params)
+        if response_dict is None or response_dict.get('success') != 1:
+            raise ApiException('Success value should be 1.')
 
-            if full_response.status_code == 429:
-                raise TooManyRequests('Too many requests, try again later.')
-
-            response_dict = full_response.json()
-            if response_dict is None:
-                raise ApiException('Response is None.')
-            if response_dict.get('success') != 1:
-                raise ApiException(f"Success value should be 1. Actual value: {response_dict.get('success')}")
-
-            for asset in response_dict.get('assets', []):
-                all_assets[asset['assetid']] = asset
-            for desc in response_dict.get('descriptions', []):
-                all_descriptions[get_description_key(desc)] = desc
-
-            last_assetid = response_dict.get('last_assetid')
-            if not last_assetid:
-                break
-            params['start_assetid'] = last_assetid
-            time.sleep(1)  # avoid rate limiting between pages
-
-        if not merge:
-            return {
-                'assets': list(all_assets.values()),
-                'descriptions': list(all_descriptions.values()),
-            }
-
-        if not all_assets:
-            return {}
-
-        return merge_items(all_assets, all_descriptions, context_id=game.context_id)
+        return merge_items_with_descriptions_from_inventory(response_dict, game) if merge else response_dict
 
     def _get_session_id(self) -> str:
         return self._sessionid
