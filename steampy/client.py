@@ -20,6 +20,7 @@ from steampy.utils import (
     get_description_key,
     get_key_value_from_url,
     login_required,
+    merge_items,
     merge_items_with_descriptions_from_inventory,
     merge_items_with_descriptions_from_offer,
     merge_items_with_descriptions_from_offers,
@@ -79,30 +80,6 @@ class SteamClient:
         account_info = f" for account '{self.account_name}'" if self.account_name else ""
         raise ValueError(f'Invalid steam_id{account_info}: {steam_id}')
 
-    def login(self, username: str | None = None, password: str | None = None, steam_guard: str | None = None) -> None:
-        invalid_client_credentials_is_present = None in {self.username, self._password, self.steam_guard_string}
-        invalid_login_credentials_is_present = None in {username, password, steam_guard}
-
-        if invalid_client_credentials_is_present and invalid_login_credentials_is_present:
-            raise InvalidCredentials(
-                'You have to pass username, password and steam_guard parameters when using "login" method',
-            )
-
-        if invalid_client_credentials_is_present:
-            self.steam_guard_string = steam_guard
-            self.steam_guard = guard.load_steam_guard(self.steam_guard_string)
-            self.username = username
-            self._password = password
-
-        if self.was_login_executed and self.is_session_alive():
-            return  # Session is alive, no need to login again
-
-        self._session.cookies.set('steamRememberLogin', 'true')
-        LoginExecutor(self.username, self._password, self.steam_guard['shared_secret'], self._session).login()
-        self.was_login_executed = True
-        self.market._set_login_executed(self.steam_guard, self._get_session_id())
-        self._access_token = self._set_access_token()
-
     def _set_access_token(self) ->str :
         steam_login_secure_cookies = [cookie for cookie in self._session.cookies if cookie.name == 'steamLoginSecure']
         cookie_value = steam_login_secure_cookies[0].value
@@ -114,29 +91,12 @@ class SteamClient:
         access_token = access_token_parts[1]
         return access_token
 
-    @login_required
-    def logout(self) -> None:
-        url = f'{SteamUrl.COMMUNITY_URL}/login/logout/'
-        data = {'sessionid': self._get_session_id()}
-        self._session.post(url, data=data)
-
-        if self.is_session_alive():
-            raise Exception('Logout unsuccessful')
-
-        self.was_login_executed = False
-
     def __enter__(self):
         self.login(self.username, self._password, self.steam_guard_string)
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.logout()
-
-    @login_required
-    def is_session_alive(self) -> bool:
-        steam_login = self.username
-        main_page_response = self._session.get(SteamUrl.COMMUNITY_URL)
-        return steam_login.lower() in main_page_response.text.lower()
 
     def api_call(
         self, method: str, interface: str, api_method: str, version: str, params: dict | None = None,
@@ -163,22 +123,45 @@ class SteamClient:
     def get_partner_inventory(
         self, partner_steam_id: str, game: GameOptions, merge: bool = True, count: int = 5000,
     ) -> dict:
-        url = f'{SteamUrl.COMMUNITY_URL}/my/inventory/json/{game.app_id}/{game.context_id}'
-        # url = f'{SteamUrl.COMMUNITY_URL}/inventory/{partner_steam_id}/{game.app_id}/{game.context_id}'
-        params = {'l': 'english'}
-        
-        full_response = self._session.get(url, params=params)
+        url = f'{SteamUrl.COMMUNITY_URL}/inventory/{partner_steam_id}/{game.app_id}/{game.context_id}'
+        params: dict = {'l': 'english', 'count': 2000}
 
-        if full_response.status_code == 429:
-            raise TooManyRequests('Too many requests, try again later.')
+        all_assets: dict = {}        # assetid -> asset dict
+        all_descriptions: dict = {}  # classid_instanceid -> description dict
 
-        response_dict = full_response.json()
-        if response_dict is None:
-            raise ApiException('Response is None.')
-        if response_dict.get('success') != 1:
-            raise ApiException(f"Success value should be 1. Actual value: {response_dict.get('success')}")
+        while True:
+            full_response = self._session.rotating_get(url, params=params)
 
-        return merge_items_with_descriptions_from_inventory(response_dict, game) if merge else response_dict
+            if full_response.status_code == 429:
+                raise TooManyRequests('Too many requests, try again later.')
+
+            response_dict = full_response.json()
+            if response_dict is None:
+                raise ApiException('Response is None.')
+            if response_dict.get('success') != 1:
+                raise ApiException(f"Success value should be 1. Actual value: {response_dict.get('success')}")
+
+            for asset in response_dict.get('assets', []):
+                all_assets[asset['assetid']] = asset
+            for desc in response_dict.get('descriptions', []):
+                all_descriptions[get_description_key(desc)] = desc
+
+            last_assetid = response_dict.get('last_assetid')
+            if not last_assetid:
+                break
+            params['start_assetid'] = last_assetid
+            time.sleep(1)  # avoid rate limiting between pages
+
+        if not merge:
+            return {
+                'assets': list(all_assets.values()),
+                'descriptions': list(all_descriptions.values()),
+            }
+
+        if not all_assets:
+            return {}
+
+        return merge_items(all_assets, all_descriptions, context_id=game.context_id)
 
     def _get_session_id(self) -> str:
         return self._sessionid
@@ -353,18 +336,6 @@ class SteamClient:
 
         return response
 
-    def get_profile(self, steam_id: str) -> dict:
-        params = {'steamids': steam_id, 'key': self._api_key}
-        response = self.api_call('GET', 'ISteamUser', 'GetPlayerSummaries', 'v0002', params)
-        data = response.json()
-        return data['response']['players'][0]
-
-    def get_friend_list(self, steam_id: str, relationship_filter: str = 'all') -> dict:
-        params = {'key': self._api_key, 'steamid': steam_id, 'relationship': relationship_filter}
-        resp = self.api_call('GET', 'ISteamUser', 'GetFriendList', 'v1', params)
-        data = resp.json()
-        return data['friendslist']['friends']
-
     @staticmethod
     def _create_offer_dict(items_from_me: list[Asset], items_from_them: list[Asset]) -> dict:
         return {
@@ -373,19 +344,6 @@ class SteamClient:
             'me': {'assets': [asset.to_dict() for asset in items_from_me], 'currency': [], 'ready': False},
             'them': {'assets': [asset.to_dict() for asset in items_from_them], 'currency': [], 'ready': False},
         }
-
-    @login_required
-    def get_escrow_duration(self, trade_offer_url: str) -> int:
-        headers = {
-            'Referer': f'{SteamUrl.COMMUNITY_URL}{urlparse.urlparse(trade_offer_url).path}',
-            'Origin': SteamUrl.COMMUNITY_URL,
-        }
-        response = self._session.get(trade_offer_url, headers=headers).text
-
-        my_escrow_duration = int(text_between(response, 'var g_daysMyEscrow = ', ';'))
-        their_escrow_duration = int(text_between(response, 'var g_daysTheirEscrow = ', ';'))
-
-        return max(my_escrow_duration, their_escrow_duration)
 
     @login_required
     def make_offer_with_url(
