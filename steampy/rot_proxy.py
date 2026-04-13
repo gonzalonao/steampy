@@ -1,5 +1,5 @@
+import random
 import requests
-import time
 
 from requests.exceptions import ProxyError
 from steampy.utils import ping_proxy
@@ -33,8 +33,9 @@ class RotatingProxySession(requests.Session):
                 raise ValueError('No reachable proxies in provided list')
             self._proxies_list = working
         
-        # set current session proxies to the first one
-        self.proxies.update(self._proxies_list[0])
+        # Randomize starting position so concurrent processes don't all hammer proxy 0
+        RotatingProxySession._last_proxy_index = random.randint(0, len(self._proxies_list) - 1)
+        self.proxies.update(self._proxies_list[RotatingProxySession._last_proxy_index])
 
     def _pick_next_proxy(self) -> dict | None:
         if not self._proxies_list:
