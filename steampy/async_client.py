@@ -476,15 +476,23 @@ class AsyncClient:
         return f'{SteamUrl.COMMUNITY_URL}/tradeoffer/{trade_offer_id}'
 
     @login_required
-    # If convert_to_decimal = False, the price will be returned WITHOUT a decimal point.
-    def get_wallet_balance(self, convert_to_decimal: bool = True, on_hold: bool = False) -> str | Decimal:
+    def get_wallet_info(self) -> dict:
+        """Return the full g_rgWalletInfo dict from the /market page.
+
+        Includes wallet_currency (Steam currency code), wallet_balance and
+        wallet_delayed_balance (both in minor units, e.g. cents), plus
+        wallet_country, wallet_state, fee settings, etc.
+        """
         response = self._session.get(f'{SteamUrl.COMMUNITY_URL}/market')
         wallet_info_match = re.search(r'var g_rgWalletInfo = (.*?);', response.text)
-        if wallet_info_match:
-            balance_dict_str = wallet_info_match.group(1)
-            balance_dict = json.loads(balance_dict_str)
-        else:
-            raise Exception('Unable to get wallet balance string match')
+        if not wallet_info_match:
+            raise Exception('Unable to get wallet info string match')
+        return json.loads(wallet_info_match.group(1))
+
+    @login_required
+    # If convert_to_decimal = False, the price will be returned WITHOUT a decimal point.
+    def get_wallet_balance(self, convert_to_decimal: bool = True, on_hold: bool = False) -> str | Decimal:
+        balance_dict = self.get_wallet_info()
         balance_dict_key = 'wallet_delayed_balance' if on_hold else 'wallet_balance'
         if convert_to_decimal:
             return Decimal(balance_dict[balance_dict_key]) / 100
