@@ -1,3 +1,11 @@
+> **Fork note (this fork is by [@gonzalonao](https://github.com/gonzalonao))**
+> This is my fork of upstream [`bukson/steampy`](https://github.com/bukson/steampy). My additions live on the
+> [`feat/market-automation`](https://github.com/gonzalonao/steampy/tree/feat/market-automation) branch and include
+> `get_wallet_info()` (returns the full `g_rgWalletInfo` dict), market-automation helpers, and proxy-rotation support —
+> built to power a personal Steam Market data-pipeline & analytics dashboard.
+
+---
+
 Steam Trade Offers Client for Python
 =======
 
