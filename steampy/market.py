@@ -33,6 +33,8 @@ if TYPE_CHECKING:
 _MARKET_PAGE_SIZE = 100
 # Above this many listings, Steam only serves them through the paged endpoint.
 _RENDER_PAGE_THRESHOLD = 1000
+# The market-history endpoint is aggressively rate limited; wait between retries.
+_HISTORY_RETRY_DELAY = 3.0
 
 
 def market_listing_referer(game: GameOptions, market_name: str) -> str:
@@ -205,6 +207,7 @@ class SteamMarket:
                 lambda: self._session.rotating_get(url, params=params),
                 attempts=max_retries,
                 retry_if=lambda r: r.status_code != HTTPStatus.OK,
+                delay=_HISTORY_RETRY_DELAY,
             )
             require_ok(response, "There was a problem getting the market history")
             return response.json()

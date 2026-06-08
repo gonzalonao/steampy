@@ -38,6 +38,8 @@ from steampy.utils import (
     texts_between,
 )
 
+# Steam caps a single inventory request at 2000 items.
+_MAX_INVENTORY_COUNT = 2000
 # Steam's trade-offer create requests always target server id 1.
 _TRADE_SERVER_ID = 1
 # Default attempts when GetTradeOffers returns malformed JSON.
@@ -102,8 +104,14 @@ class SteamClient:
         self._session.set_proxies_list([proxies], skip_ping=True)
 
     def set_login_cookies(self, cookies: dict) -> None:
-        """Authenticate using existing session cookies instead of credentials."""
-        self._session.cookies.update(cookies)
+        """Authenticate using existing session cookies instead of credentials.
+
+        The cookies are scoped to the community and store domains so that both
+        outgoing requests and the domain-filtered session-id lookup resolve them.
+        """
+        for name, value in cookies.items():
+            for domain in ("steamcommunity.com", "store.steampowered.com"):
+                self._session.cookies.set(name, value, domain=domain, path="/")
         self.was_login_executed = True
         if self.steam_guard is None:
             self.steam_guard = {"steamid": str(self.get_steam_id())}
@@ -237,7 +245,7 @@ class SteamClient:
 
     @login_required
     def get_my_inventory(
-        self, game: GameOptions, merge: bool = True, count: int = 5000
+        self, game: GameOptions, merge: bool = True, count: int = _MAX_INVENTORY_COUNT
     ) -> dict:
         """Return the logged-in account's inventory for ``game``."""
         assert self.steam_guard is not None
@@ -250,14 +258,17 @@ class SteamClient:
         partner_steam_id: str,
         game: GameOptions,
         merge: bool = True,
-        count: int = 5000,
+        count: int = _MAX_INVENTORY_COUNT,
     ) -> dict:
-        """Return another account's inventory for ``game``."""
+        """Return another account's inventory for ``game``.
+
+        ``count`` is clamped to Steam's per-request maximum of 2000 items.
+        """
         url = (
             f"{SteamUrl.COMMUNITY_URL}/inventory/"
             f"{partner_steam_id}/{game.app_id}/{game.context_id}"
         )
-        params: dict = {"l": "english", "count": count}
+        params: dict = {"l": "english", "count": min(count, _MAX_INVENTORY_COUNT)}
 
         full_response = self._session.get(url, params=params)
         if full_response.status_code == HTTPStatus.TOO_MANY_REQUESTS:
@@ -274,9 +285,8 @@ class SteamClient:
         )
 
     def _get_session_id(self) -> str:
-        return self._session.cookies.get_dict(domain="steamcommunity.com", path="/")[
-            "sessionid"
-        ]
+        cookies = self._session.cookies.get_dict(domain="steamcommunity.com", path="/")
+        return cookies.get("sessionid", "")
 
     def get_trade_offers_summary(self) -> dict:
         """Return the account's pending trade-offer counters."""
