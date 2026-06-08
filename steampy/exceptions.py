@@ -1,30 +1,33 @@
+"""Exceptions raised across the steampy library."""
+
+
 class SevenDaysHoldException(Exception):
-    pass
+    """Raised when an account is under the 7-day trade hold (new device login)."""
 
 
 class TooManyRequests(Exception):
-    pass
+    """Raised when Steam answers with HTTP 429 (rate limited)."""
 
 
 class ApiException(Exception):
-    pass
+    """Raised when a Steam endpoint returns an unexpected or failed response."""
 
 
 class LoginRequired(Exception):
-    pass
+    """Raised when an authenticated action is attempted before logging in."""
 
 
 class InvalidCredentials(Exception):
-    pass
+    """Raised when login fails due to bad credentials or an invalid guard file."""
 
 
 class CaptchaRequired(Exception):
-    pass
+    """Raised when Steam requires a captcha to complete the login."""
 
 
 class ConfirmationExpected(Exception):
-    pass
+    """Raised when an expected mobile confirmation could not be found."""
 
 
 class ProxyConnectionError(Exception):
-    pass
+    """Raised when a configured proxy cannot reach Steam."""

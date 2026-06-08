@@ -72,8 +72,12 @@ select = [
 [tool.mypy]
 python_version = "3.12"
 strict = true
-warn_unused_ignores = true
 warn_redundant_casts = true
+# This library wraps untyped Steam JSON responses, so bare containers and values
+# returned straight from `response.json()` are intentionally dynamic. The rest
+# of --strict (untyped defs, optional handling, etc.) stays enabled.
+disallow_any_generics = false
+warn_return_any = false
 
 [[tool.mypy.overrides]]
 # rsa ships no type stubs.
