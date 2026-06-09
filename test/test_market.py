@@ -93,10 +93,11 @@ class TestMarket(TestCase):
         client.login(
             self.credentials.login, self.credentials.password, self.steam_guard_file
         )
-        # PUT THE REAL CURRENCY OF YOUR STEAM WALLET, OTHER CURRENCIES WON'T WORK
+        # Currency must match the wallet; price per unit is in minor units
+        # (cents), so "1034" means 10.34 in the wallet currency.
         response = client.market.create_buy_order(
             "AK-47 | Redline (Field-Tested)",
-            "10.34",
+            "1034",
             2,
             GameOptions.CS,
             Currency.EURO,

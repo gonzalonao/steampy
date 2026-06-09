@@ -20,9 +20,10 @@ async def main() -> None:
     client.login(username, password, steam_guard_path)
 
     market = AsyncMarket.from_client(client)
+    # Price per unit is in minor units (cents): "1000" -> 10.00 in the wallet currency.
     orders = [
-        ("AK-47 | Redline (Field-Tested)", "10.00", 1),
-        ("AWP | Asiimov (Field-Tested)", "30.00", 1),
+        ("AK-47 | Redline (Field-Tested)", "1000", 1),
+        ("AWP | Asiimov (Field-Tested)", "3000", 1),
     ]
     responses = await market.create_buy_orders(orders, GameOptions.CS, Currency.USD)
     for order, response in zip(orders, responses, strict=True):

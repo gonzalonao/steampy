@@ -94,7 +94,8 @@ from steampy.async_market import AsyncMarket
 from steampy.models import Currency, GameOptions
 
 market = AsyncMarket.from_client(client)
-orders = [("AK-47 | Redline (Field-Tested)", "10.00", 1)]
+# Price per unit is in minor units (cents): "1000" -> 10.00 in the wallet currency.
+orders = [("AK-47 | Redline (Field-Tested)", "1000", 1)]
 asyncio.run(market.create_buy_orders(orders, GameOptions.CS, Currency.USD))
 ```
 

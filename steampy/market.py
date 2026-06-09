@@ -51,7 +51,10 @@ def build_buy_order_data(
     game: GameOptions,
     currency: Currency,
 ) -> dict:
-    """Build the POST body shared by the sync and async buy-order requests."""
+    """Build the POST body shared by the sync and async buy-order requests.
+
+    ``price_single_item`` is in minor units (e.g. cents): ``"300"`` -> 3.00.
+    """
     return {
         "sessionid": session_id,
         "currency": currency.value,
@@ -59,6 +62,9 @@ def build_buy_order_data(
         "market_hash_name": market_name,
         "price_total": str(Decimal(price_single_item) * Decimal(quantity)),
         "quantity": quantity,
+        # Steam now requires this flag acknowledging the buy-order terms;
+        # without it the endpoint answers with success == 2.
+        "confirmation": "1",
     }
 
 
@@ -272,7 +278,16 @@ class SteamMarket:
         game: GameOptions,
         currency: Currency = Currency.USD,
     ) -> dict:
-        """Place a buy order for ``quantity`` units of a market item."""
+        """Place a buy order for ``quantity`` units of a market item.
+
+        Args:
+            market_name: The item's ``market_hash_name``.
+            price_single_item: Price per unit in **minor units** (e.g. cents),
+                as Steam expects — ``"300"`` means 3.00 in the wallet currency.
+            quantity: Number of units to buy.
+            game: The game the item belongs to.
+            currency: The wallet currency; must match the account's wallet.
+        """
         data = build_buy_order_data(
             self._session_id, market_name, price_single_item, quantity, game, currency
         )
@@ -284,8 +299,8 @@ class SteamMarket:
         ).json()
         if (success := response.get("success")) != 1:
             raise ApiException(
-                "There was a problem creating the order. "
-                f"Are you using the right currency? success: {success}",
+                f"There was a problem creating the order (success={success}). "
+                f"Steam message: {response.get('message')}",
             )
         return response
 
