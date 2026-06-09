@@ -523,14 +523,25 @@ class SteamClient:
         return response.json()["response"]["players"][0]
 
     def get_friend_list(self, steam_id: str, relationship_filter: str = "all") -> dict:
-        """Return the friend list for ``steam_id``."""
+        """Return the friend list for ``steam_id``.
+
+        Raises:
+            ApiException: If the profile's friend list is private or otherwise
+                unavailable (Steam then omits the ``friendslist`` field).
+        """
         params = {
             "key": self._api_key,
             "steamid": steam_id,
             "relationship": relationship_filter,
         }
         response = self.api_call("GET", "ISteamUser", "GetFriendList", "v1", params)
-        return response.json()["friendslist"]["friends"]
+        data = response.json()
+        if "friendslist" not in data:
+            raise ApiException(
+                f"Could not fetch the friend list for {steam_id}; "
+                "the profile's friends may be private.",
+            )
+        return data["friendslist"]["friends"]
 
     @staticmethod
     def _create_offer_dict(
