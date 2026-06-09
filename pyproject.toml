@@ -1,0 +1,89 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "steampy"
+version = "1.2.0"
+description = "A Steam library for trade and market automation, with proxy rotation and async support"
+readme = "README.md"
+license = { file = "LICENSE.txt" }
+requires-python = ">=3.12"
+keywords = ["steam", "trade", "market", "automation", "proxy", "async"]
+authors = [{ name = "Michał Bukowski", email = "gigibukson@gmail.com" }]
+maintainers = [{ name = "Gonzalo López", email = "gonzalonao@gmail.com" }]
+classifiers = [
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+dependencies = [
+    "requests",
+    "beautifulsoup4",
+    "rsa",
+]
+
+[project.optional-dependencies]
+# Concurrency helpers (AsyncMarket) require aiohttp.
+async = ["aiohttp"]
+# Tooling used for local development and CI.
+dev = [
+    "aiohttp",
+    "ruff",
+    "mypy",
+    "pytest",
+    "types-requests",
+]
+
+[project.urls]
+Homepage = "https://github.com/gonzalonao/steampy"
+Upstream = "https://github.com/bukson/steampy"
+
+[tool.setuptools]
+packages = ["steampy"]
+
+[tool.setuptools.package-data]
+steampy = ["py.typed"]
+
+[tool.ruff]
+line-length = 88
+target-version = "py312"
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "F",    # pyflakes
+    "I",    # isort
+    "UP",   # pyupgrade
+    "B",    # flake8-bugbear
+    "C4",   # flake8-comprehensions
+    "SIM",  # flake8-simplify
+    "RET",  # flake8-return
+    "PT",   # flake8-pytest-style
+    "RUF",  # ruff-specific rules
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Tests favour readability over some lint rules.
+"test/*" = ["S101"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_redundant_casts = true
+# This library wraps untyped Steam JSON responses, so bare containers and values
+# returned straight from `response.json()` are intentionally dynamic. The rest
+# of --strict (untyped defs, optional handling, etc.) stays enabled.
+disallow_any_generics = false
+warn_return_any = false
+
+[[tool.mypy.overrides]]
+# rsa ships no type stubs.
+module = ["rsa.*"]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["test"]
+python_files = ["test_*.py"]

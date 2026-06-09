@@ -4,11 +4,11 @@
 
 from steampy.guard import generate_confirmation_key, generate_one_time_code
 
-shared_secret = ''
-identity_secret = ''
+shared_secret = ""
+identity_secret = ""
 
 one_time_authentication_code = generate_one_time_code(shared_secret)
 print(one_time_authentication_code)
 
-confirmation_key = generate_confirmation_key(identity_secret, 'conf')
+confirmation_key = generate_confirmation_key(identity_secret, "conf")
 print(confirmation_key)

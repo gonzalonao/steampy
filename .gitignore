@@ -1,12 +1,35 @@
+# Editors
 .idea
+.vscode
+
+# Python bytecode and caches
 *.pyc
-db.sqlite3
+__pycache__/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Build / packaging artifacts
+build/
+dist/
+*.egg-info/
+steampy.egg-info
+
+# Secrets and credentials
+.env
 *.key
 *.pwd
 Steamguard*
+secrets
+
+# Runtime / local data
+db.sqlite3
 data.json
-steampy.egg-info
-dist
+results/
 debug.*
 deploy.sh
-secrets
