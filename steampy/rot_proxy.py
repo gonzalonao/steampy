@@ -2,7 +2,17 @@ import random
 import requests
 
 from requests.exceptions import ProxyError
+from steampy.models import DEFAULT_USER_AGENT
 from steampy.utils import ping_proxy
+
+
+def _proxy_host(proxy: dict | None) -> str:
+    """Return the proxy's host:port for logging, stripping credentials."""
+    if not proxy:
+        return 'none'
+    url = proxy.get('https') or proxy.get('http') or ''
+    return url.rsplit('@', 1)[-1] or 'unknown'
+
 
 class RotatingProxySession(requests.Session):
     # static/class variable to remember last-used proxy index across instances
@@ -10,6 +20,7 @@ class RotatingProxySession(requests.Session):
 
     def __init__(self):
         super().__init__()
+        self.headers['User-Agent'] = DEFAULT_USER_AGENT
         self._proxies_list = []
 
     def set_proxies_list(self, proxies_list: list[dict], skip_ping: bool = True) -> None:
@@ -78,7 +89,7 @@ class RotatingProxySession(requests.Session):
                 last_exc = e
                 print(
                     f'[DEBUG] ProxyError on attempt {attempt + 1}/{retries_allowed + 1} '
-                    f'(proxy: {proxy}). Retrying with next proxy...'
+                    f'(proxy: {_proxy_host(proxy)}). Retrying with next proxy...'
                 )
 
         raise ProxyError(
@@ -115,7 +126,7 @@ class RotatingProxySession(requests.Session):
                 last_exc = e
                 print(
                     f'[DEBUG] ProxyError on POST attempt {attempt + 1}/{retries_allowed + 1} '
-                    f'(proxy: {proxy}). Retrying with next proxy...'
+                    f'(proxy: {_proxy_host(proxy)}). Retrying with next proxy...'
                 )
 
         raise ProxyError(

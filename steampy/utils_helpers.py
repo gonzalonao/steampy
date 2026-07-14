@@ -1,10 +1,12 @@
 import os
+from concurrent.futures import ThreadPoolExecutor
+
 import requests
 from pathlib import Path
 
 from steampy.client import SteamClient
 from steampy.async_client import AsyncClient
-from steampy.utils import ping_proxy
+from steampy.utils import steam_proxy_ok
 
 
 def start_clients(file, proxies=None, async_client: bool = False):
@@ -57,17 +59,21 @@ def start_clients(file, proxies=None, async_client: bool = False):
 PROXY_URL = os.getenv("PROXY_URL")
 
 def get_proxies(url: str | None = PROXY_URL, test: bool = True) -> list[dict]:
-    """Fetch proxies from a web URL and validate their reachability.
-    
+    """Fetch proxies from a web URL and filter out Steam-banned ones.
+
     Args:
         url (str): The URL to fetch proxies from. Expected response format:
                    Plain text with one proxy per line: ip:port:user:password
-    
+        test: When True (default), probe every proxy against the Steam market
+              page (browser UA) concurrently and keep only those returning 200.
+              Steam hard-bans many shared datacenter IPs with 429, so skipping
+              this check usually means most requests fail.
+
     Returns:
         list: List of validated proxy dictionaries with 'http' and 'https' keys
-    
+
     Raises:
-        ValueError: If no reachable proxies are found
+        ValueError: If no Steam-usable proxies are found
         requests.RequestException: If the URL fetch fails
     """
     print(f"[DEBUG] Fetching proxies from URL: {url}")
@@ -99,13 +105,17 @@ def get_proxies(url: str | None = PROXY_URL, test: bool = True) -> list[dict]:
 
     if not test:
         return proxies
-    
-    # Filter reachable proxies once to avoid re-checking for each client
-    print(f"[DEBUG] Testing {len(proxies)} proxies for reachability...")
-    working = [p for p in proxies if ping_proxy(p)]
-    print(f"[DEBUG] {len(working)} proxies are reachable out of {len(proxies)}")
+
+    # Probe all proxies against Steam concurrently (one status-only GET each,
+    # ~10s timeout) so a 100-proxy list is checked in well under a minute.
+    print(f"[DEBUG] Testing {len(proxies)} proxies against Steam (429-ban check)...")
+    with ThreadPoolExecutor(max_workers=20) as executor:
+        results = list(executor.map(steam_proxy_ok, proxies))
+    working = [p for p, ok in zip(proxies, results) if ok]
+    print(f"[DEBUG] {len(working)} of {len(proxies)} proxies are Steam-usable")
     if not working:
-        raise ValueError('No reachable proxies found from the provided URL')
+        raise ValueError('No Steam-usable proxies found from the provided URL '
+                         '(all banned/unreachable)')
     return working
 
 def get_desktop_path():

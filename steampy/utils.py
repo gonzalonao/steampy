@@ -15,6 +15,7 @@ from bs4 import BeautifulSoup, Tag
 from requests.structures import CaseInsensitiveDict
 
 from steampy.exceptions import LoginRequired
+from steampy.models import DEFAULT_USER_AGENT, SteamUrl
 
 if TYPE_CHECKING:
     from steampy.models import GameOptions
@@ -318,5 +319,27 @@ def ping_proxy(proxies: dict) -> bool:
     try:
         requests.get('https://steamcommunity.com/', proxies=proxies, timeout=10)
         return True
+    except Exception:
+        return False
+
+
+def steam_proxy_ok(proxies: dict, timeout: int = 10) -> bool:
+    """Check that a proxy is not only reachable but also not Steam-banned.
+
+    Steam hard-bans many datacenter proxy IPs with HTTP 429 on every request,
+    so a plain connectivity ping is not enough. Probes the market page with a
+    browser User-Agent and requires a 200. ``stream=True`` avoids downloading
+    the ~1.4 MB body — only the status line and headers are read.
+    """
+    try:
+        response = requests.get(
+            f'{SteamUrl.COMMUNITY_URL}/market/',
+            proxies=proxies,
+            headers={'User-Agent': DEFAULT_USER_AGENT},
+            timeout=timeout,
+            stream=True,
+        )
+        response.close()
+        return response.status_code == 200
     except Exception:
         return False
