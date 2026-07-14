@@ -15,7 +15,7 @@ from bs4 import BeautifulSoup, Tag
 from requests.structures import CaseInsensitiveDict
 
 from steampy.exceptions import LoginRequired
-from steampy.models import DEFAULT_USER_AGENT, SteamUrl
+from steampy.models import DEFAULT_HEADERS, SteamUrl
 
 if TYPE_CHECKING:
     from steampy.models import GameOptions
@@ -335,7 +335,7 @@ def steam_proxy_ok(proxies: dict, timeout: int = 10) -> bool:
         response = requests.get(
             f'{SteamUrl.COMMUNITY_URL}/market/',
             proxies=proxies,
-            headers={'User-Agent': DEFAULT_USER_AGENT},
+            headers=DEFAULT_HEADERS,
             timeout=timeout,
             stream=True,
         )

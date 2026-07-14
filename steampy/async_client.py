@@ -16,7 +16,7 @@ from steampy.exceptions import ApiException, SevenDaysHoldException, TooManyRequ
 from steampy.login import InvalidCredentials, LoginExecutor
 from steampy.market import SteamMarket
 from steampy.async_market import AsyncMarket
-from steampy.models import DEFAULT_USER_AGENT, Asset, GameOptions, SteamUrl, TradeOfferState
+from steampy.models import DEFAULT_HEADERS, Asset, GameOptions, SteamUrl, TradeOfferState
 from steampy.utils import (
     account_id_to_steam_id,
     get_description_key,
@@ -45,8 +45,8 @@ class AsyncClient:
     ) -> None:
         self._api_key = api_key
         self._session = requests.Session()
-        self._session.headers['User-Agent'] = DEFAULT_USER_AGENT
-        self.async_session = aiohttp.ClientSession(headers={'User-Agent': DEFAULT_USER_AGENT})
+        self._session.headers.update(DEFAULT_HEADERS)
+        self.async_session = aiohttp.ClientSession(headers=DEFAULT_HEADERS)
         self._sessionid = login_cookies.get('sessionid')
         self.account_name = account_name
         self.proxies = proxies if isinstance(proxies, list) else ([proxies] if proxies else [])

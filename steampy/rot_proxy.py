@@ -2,7 +2,7 @@ import random
 import requests
 
 from requests.exceptions import ProxyError
-from steampy.models import DEFAULT_USER_AGENT
+from steampy.models import DEFAULT_HEADERS
 from steampy.utils import ping_proxy
 
 
@@ -20,7 +20,7 @@ class RotatingProxySession(requests.Session):
 
     def __init__(self):
         super().__init__()
-        self.headers['User-Agent'] = DEFAULT_USER_AGENT
+        self.headers.update(DEFAULT_HEADERS)
         self._proxies_list = []
 
     def set_proxies_list(self, proxies_list: list[dict], skip_ping: bool = True) -> None:

@@ -115,6 +115,15 @@ class SteamUrl:
 # variants before assuming IP bans.
 DEFAULT_USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
 
+# Some endpoints (e.g. /market/itemordershistogram) additionally 429 requests
+# that don't send an explicit `Connection: keep-alive` header. `requests` adds
+# it by default but aiohttp does not (keep-alive is implicit in HTTP/1.1), so
+# every aiohttp session must use these headers, verified A/B 2026-07-14.
+DEFAULT_HEADERS = {
+    'User-Agent': DEFAULT_USER_AGENT,
+    'Connection': 'keep-alive',
+}
+
 
 class Endpoints:
     CHAT_LOGIN = f'{SteamUrl.API_URL}/ISteamWebUserPresenceOAuth/Logon/v1'
