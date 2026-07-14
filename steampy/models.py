@@ -107,12 +107,13 @@ class SteamUrl:
 
 
 # Steam 429-blocks the default python-requests User-Agent (observed 2026-07).
-# Every session must send a realistic browser UA. Keep the version reasonably
-# current; a static value is fine (real browsers send the same UA for months).
-DEFAULT_USER_AGENT = (
-    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
-    '(KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36'
-)
+# Counter-intuitively, full browser UAs (Chrome/Firefox/Safari, even with
+# sec-ch-ua client hints) are ALSO blocked — most likely because the TLS/HTTP
+# fingerprint of `requests` doesn't match the browser the UA claims to be.
+# This generic WebKit UA, which claims no specific browser, passes (verified
+# A/B on a clean IP, 2026-07-14). If fetches start 429ing again, re-test UA
+# variants before assuming IP bans.
+DEFAULT_USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
 
 
 class Endpoints:
