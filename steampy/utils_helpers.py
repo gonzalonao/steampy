@@ -1,5 +1,6 @@
 import os
 from concurrent.futures import ThreadPoolExecutor
+from urllib.parse import urlparse
 
 import requests
 from pathlib import Path
@@ -70,13 +71,16 @@ def get_proxies(url: str | None = PROXY_URL, test: bool = True) -> list[dict]:
               this check usually means most requests fail.
 
     Returns:
-        list: List of validated proxy dictionaries with 'http' and 'https' keys
+        list: List of validated proxy dictionaries with 'http' and 'https' keys.
+              Empty when the whole pool fails the Steam check — callers then
+              build clients without proxies (direct connection).
 
     Raises:
-        ValueError: If no Steam-usable proxies are found
         requests.RequestException: If the URL fetch fails
     """
-    print(f"[DEBUG] Fetching proxies from URL: {url}")
+    # Log only the host: proxy-list URLs typically embed an access token.
+    host = urlparse(url).netloc if url else 'None'
+    print(f"[DEBUG] Fetching proxies from: {host}")
 
     proxies = []
     
@@ -114,8 +118,13 @@ def get_proxies(url: str | None = PROXY_URL, test: bool = True) -> list[dict]:
     working = [p for p, ok in zip(proxies, results) if ok]
     print(f"[DEBUG] {len(working)} of {len(proxies)} proxies are Steam-usable")
     if not working:
-        raise ValueError('No Steam-usable proxies found from the provided URL '
-                         '(all banned/unreachable)')
+        # Fall back to direct connection rather than aborting: clients built
+        # with an empty proxy list use the local IP, which works (with the
+        # browser UA) subject to Steam's per-IP burst throttling.
+        print('[WARNING] Entire proxy pool is Steam-banned or unreachable. '
+              'Continuing WITHOUT proxies — all requests will use the local IP. '
+              'Renew the proxy subscription/IPs to restore proxied fetching.')
+        return []
     return working
 
 def get_desktop_path():
