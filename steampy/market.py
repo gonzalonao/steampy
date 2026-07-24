@@ -1,4 +1,5 @@
 import json
+import os
 import urllib.parse
 from decimal import Decimal
 from http import HTTPStatus
@@ -19,6 +20,37 @@ from steampy.utils import (
     merge_items_with_descriptions_from_history,
     text_between,
 )
+
+
+# Steam's /market/myhistory/render endpoint accepts up to 500 rows per request;
+# larger counts are silently capped/rejected. Fewer, larger pages mean fewer
+# requests and therefore less rate-limit pressure, so we page at the max by
+# default. Override per-call (count=) or globally via MARKET_HISTORY_PAGE_SIZE.
+DEFAULT_MARKET_HISTORY_PAGE_SIZE = 500
+MAX_MARKET_HISTORY_PAGE_SIZE = 500
+
+
+def _resolve_history_page_size(count: int | None) -> int:
+    """Resolve the market-history page size.
+
+    Precedence: explicit ``count`` arg > ``MARKET_HISTORY_PAGE_SIZE`` env var >
+    ``DEFAULT_MARKET_HISTORY_PAGE_SIZE``. The result is clamped to
+    ``[1, MAX_MARKET_HISTORY_PAGE_SIZE]`` since Steam rejects larger counts.
+    """
+    if count is None:
+        raw = os.getenv('MARKET_HISTORY_PAGE_SIZE')
+        if raw and raw.strip():
+            try:
+                count = int(raw)
+            except ValueError:
+                print(
+                    f'[WARNING] Invalid MARKET_HISTORY_PAGE_SIZE={raw!r}; '
+                    f'falling back to default {DEFAULT_MARKET_HISTORY_PAGE_SIZE}.'
+                )
+                count = DEFAULT_MARKET_HISTORY_PAGE_SIZE
+        else:
+            count = DEFAULT_MARKET_HISTORY_PAGE_SIZE
+    return max(1, min(count, MAX_MARKET_HISTORY_PAGE_SIZE))
 
 
 class SteamMarket:
@@ -226,8 +258,9 @@ class SteamMarket:
         return listings
 
     @login_required
-    def get_market_history(self, max_retries: int = 20):
+    def get_market_history(self, max_retries: int = 20, count: int | None = None):
         url = f'{SteamUrl.COMMUNITY_URL}/market/myhistory/render/'
+        page_size = _resolve_history_page_size(count)
 
         # helper to perform a GET with retry loop
         def _query(params: dict) -> 'requests.Response':
@@ -252,8 +285,10 @@ class SteamMarket:
         jresp = response.json()
         total_count = jresp.get('total_count', 0)
 
-        for i in range(0, total_count + 100, 100):
-            params = {'start': i, 'count': 100}
+        # Step by page_size across [0, total_count); the final page's count only
+        # over-reaches into an empty range, so no trailing empty request is made.
+        for i in range(0, total_count, page_size):
+            params = {'start': i, 'count': page_size}
             response = _query(params)
             jresp = response.json()
             history_row_to_assets_address = get_history_id_to_assets_address_from_html(jresp.get('hovers'))
