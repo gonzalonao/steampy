@@ -1,5 +1,7 @@
 import json
 import os
+import random
+import time
 import urllib.parse
 from decimal import Decimal
 from http import HTTPStatus
@@ -28,6 +30,35 @@ from steampy.utils import (
 # default. Override per-call (count=) or globally via MARKET_HISTORY_PAGE_SIZE.
 DEFAULT_MARKET_HISTORY_PAGE_SIZE = 500
 MAX_MARKET_HISTORY_PAGE_SIZE = 500
+
+
+# Rate-limit handling for market-history paging. Steam burst-throttles per IP
+# and per proxy, so retrying a 429 immediately only deepens the throttle it is
+# trying to escape: each one sleeps with exponential backoff + jitter before the
+# next attempt (which also rotates to the next proxy). 429s draw on their own
+# budget rather than the caller's max_retries, which stays reserved for genuine
+# failures. Mirrors the pattern in the toolkit's steam_orderbook._backoff.
+RATE_LIMIT_RETRIES = 10
+RATE_LIMIT_BASE_SLEEP = 1.0   # seconds; doubled per consecutive 429
+RATE_LIMIT_MAX_SLEEP = 30.0   # ceiling for both computed and Retry-After waits
+
+
+def _rate_limit_sleep_seconds(resp, consecutive: int) -> float:
+    """Seconds to wait after a 429, honouring ``Retry-After`` when Steam sends it.
+
+    Falls back to exponential backoff (``base * 2 ** consecutive``) plus jitter,
+    so concurrent account fetches don't resynchronise onto the same retry beat.
+    Both paths are capped at ``RATE_LIMIT_MAX_SLEEP`` so a stray or hostile
+    header can't stall a run indefinitely.
+    """
+    retry_after = resp.headers.get('Retry-After') if resp is not None else None
+    if retry_after:
+        try:
+            return min(float(retry_after), RATE_LIMIT_MAX_SLEEP)
+        except ValueError:
+            pass  # Retry-After may be an HTTP-date; fall through to backoff
+    backoff = RATE_LIMIT_BASE_SLEEP * (2 ** consecutive)
+    return min(backoff, RATE_LIMIT_MAX_SLEEP) + random.random()
 
 
 def _resolve_history_page_size(count: int | None) -> int:
@@ -258,23 +289,41 @@ class SteamMarket:
         return listings
 
     @login_required
-    def get_market_history(self, max_retries: int = 20, count: int | None = None):
+    def get_market_history(self, max_retries: int = 5, count: int | None = None):
         url = f'{SteamUrl.COMMUNITY_URL}/market/myhistory/render/'
         page_size = _resolve_history_page_size(count)
 
         # helper to perform a GET with retry loop
         def _query(params: dict) -> 'requests.Response':
             last_resp = None
-            for attempt in range(1, max_retries + 1):
+            rate_limited = 0
+            attempt = 0
+            while attempt < max_retries:
                 resp = self._session.rotating_get(url, params=params)
                 if resp.status_code == HTTPStatus.OK:
                     return resp
                 last_resp = resp
-                print(f'[DEBUG] Attempt {attempt} failed with HTTP code {resp.status_code}. Retrying...')
+                # Throttling is transient, not a failure: sleep it off (the next
+                # attempt rotates proxies too) without spending the retry budget.
+                if (resp.status_code == HTTPStatus.TOO_MANY_REQUESTS
+                        and rate_limited < RATE_LIMIT_RETRIES):
+                    delay = _rate_limit_sleep_seconds(resp, rate_limited)
+                    rate_limited += 1
+                    print(
+                        f'[DEBUG] Rate limited (429) {rate_limited}/{RATE_LIMIT_RETRIES}; '
+                        f'sleeping {delay:.1f}s before retrying...'
+                    )
+                    time.sleep(delay)
+                    continue
+                attempt += 1
+                print(
+                    f'[DEBUG] Attempt {attempt}/{max_retries} failed with HTTP code '
+                    f'{resp.status_code}. Retrying...'
+                )
             # failed all attempts
             raise ApiException(
-                f'There was a problem getting the market history after {max_retries} attempts. '
-                f'Last HTTP code: {last_resp.status_code}'
+                f'There was a problem getting the market history after {max_retries} attempts '
+                f'({rate_limited} rate-limit retries). Last HTTP code: {last_resp.status_code}'
             )
 
         # initial request to learn total_count
